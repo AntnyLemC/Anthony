@@ -38,27 +38,34 @@
 #include "aws_iot_mqtt_client_interface.h"
 
 #define HOST_ADDRESS_SIZE 255
+
+float systemp;
+float millideg;
+FILE *thermal;
+char temp[10];
+int n;
+
 /**
  * @brief Default cert location
  */
-static char certDirectory[PATH_MAX + 1] = "../../../certs";
+char certDirectory[PATH_MAX + 1] = "../../../certs";
 
 /**
  * @brief Default MQTT HOST URL is pulled from the aws_iot_config.h
  */
-static char HostAddress[HOST_ADDRESS_SIZE] = AWS_IOT_MQTT_HOST;
+char HostAddress[HOST_ADDRESS_SIZE] = AWS_IOT_MQTT_HOST;
 
 /**
  * @brief Default MQTT port is pulled from the aws_iot_config.h
  */
-static uint32_t port = AWS_IOT_MQTT_PORT;
+uint32_t port = AWS_IOT_MQTT_PORT;
 
 /**
  * @brief This parameter will avoid infinite loop of publish and exit the program after certain number of publishes
  */
-static uint32_t publishCount = 0;
+uint32_t publishCount = 0;
 
-static void iot_subscribe_callback_handler(AWS_IoT_Client *pClient, char *topicName, uint16_t topicNameLen,
+void iot_subscribe_callback_handler(AWS_IoT_Client *pClient, char *topicName, uint16_t topicNameLen,
 									IoT_Publish_Message_Params *params, void *pData) {
 	IOT_UNUSED(pData);
 	IOT_UNUSED(pClient);
@@ -66,7 +73,7 @@ static void iot_subscribe_callback_handler(AWS_IoT_Client *pClient, char *topicN
 	IOT_INFO("%.*s\t%.*s", topicNameLen, topicName, (int) params->payloadLen, (char *) params->payload);
 }
 
-static void disconnectCallbackHandler(AWS_IoT_Client *pClient, void *data) {
+void disconnectCallbackHandler(AWS_IoT_Client *pClient, void *data) {
 	IOT_WARN("MQTT Disconnect");
 	IoT_Error_t rc = FAILURE;
 
@@ -89,7 +96,7 @@ static void disconnectCallbackHandler(AWS_IoT_Client *pClient, void *data) {
 	}
 }
 
-static void parseInputArgsForConnectParams(int argc, char **argv) {
+void parseInputArgsForConnectParams(int argc, char **argv) {
 	int opt;
 
 	while(-1 != (opt = getopt(argc, argv, "h:p:c:x:"))) {
@@ -129,7 +136,6 @@ static void parseInputArgsForConnectParams(int argc, char **argv) {
 
 int main(int argc, char **argv) {
 	bool infinitePublishFlag = true;
-
 	char rootCA[PATH_MAX + 1];
 	char clientCRT[PATH_MAX + 1];
 	char clientKey[PATH_MAX + 1];
@@ -202,7 +208,7 @@ int main(int argc, char **argv) {
 	}
 
 	IOT_INFO("Subscribing...");
-	rc = aws_iot_mqtt_subscribe(&client, "iot/CPUTemp", 11, QOS0, iot_subscribe_callback_handler, NULL);
+	rc = aws_iot_mqtt_subscribe(&client, "sdkTest/sub", 11, QOS0, iot_subscribe_callback_handler, NULL);
 	if(SUCCESS != rc) {
 		IOT_ERROR("Error subscribing : %d ", rc);
 		return rc;
@@ -212,11 +218,7 @@ int main(int argc, char **argv) {
 
 	paramsQOS0.qos = QOS0;
 	paramsQOS0.payload = (void *) cPayload;
-	paramsQOS0.isRetained = 0;
-
-	paramsQOS1.qos = QOS1;
-	paramsQOS1.payload = (void *) cPayload;
-	paramsQOS1.isRetained = 0;
+	paramsQOS0.isRetained = 0
 
 	if(publishCount != 0) {
 		infinitePublishFlag = false;
@@ -231,17 +233,9 @@ int main(int argc, char **argv) {
 			// If the client is attempting to reconnect we will skip the rest of the loop.
 			continue;
 		}
-
-		float systemp;
-		float millideg;
-		FILE *thermal;
-		char temp[10];
-		int n;
-		char timeCustom[1000];
-		time_t t = time(NULL);
-    struct tm * p = localtime(&t);
-
-    strftime(timeCustom, 1000, "%B %d %Y %X", p);
+	time_t t;   // not a primitive datatype
+        time(&t);
+	ctime(&t)
         thermal = fopen("/sys/class/thermal/thermal_zone0/temp","r");
         n = fscanf(thermal,"%f",&millideg);
         fclose(thermal);
@@ -250,10 +244,10 @@ int main(int argc, char **argv) {
         sprintf(temp, "%f",systemp);
 
 		IOT_INFO("-->sleep");
-		sleep(10);
-		sprintf(cPayload, "{\"timestamp\": \"%s\" ,\n \"temp\": \"%s\"\n}", timeCustom,temp);
+		sleep(1);
+		sprintf(cPayload, "{"+""+"%s}",temp);
 		paramsQOS0.payloadLen = strlen(cPayload);
-		rc = aws_iot_mqtt_publish(&client, "iot/CPUTemp", 11, &paramsQOS0);
+		rc = aws_iot_mqtt_publish(&client, "iot/CPUTempCheck", 11, &paramsQOS0);
 		if(publishCount > 0) {
 			publishCount--;
 		}
@@ -262,16 +256,6 @@ int main(int argc, char **argv) {
 			break;
 		}
 
-		//sprintf(cPayload, "%s : %d ", "hello from SDK QOS1", i++);
-		//paramsQOS1.payloadLen = strlen(cPayload);
-		//rc = aws_iot_mqtt_publish(&client, "sdkTest/sub", 11, &paramsQOS1);
-		//if (rc == MQTT_REQUEST_TIMEOUT_ERROR) {
-		//	IOT_WARN("QOS1 publish ack not received.\n");
-		//	rc = SUCCESS;
-		//}
-		//if(publishCount > 0) {
-		//	publishCount--;
-		//}
 	}
 
 	// Wait for all the messages to be received
@@ -285,3 +269,4 @@ int main(int argc, char **argv) {
 
 	return rc;
 }
+
